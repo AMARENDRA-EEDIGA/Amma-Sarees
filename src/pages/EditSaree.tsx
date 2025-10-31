@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { ArrowLeft, Upload, Save } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Save } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useApp } from '@/contexts/AppContext';
 
-const AddSaree = () => {
+const EditSaree = () => {
   const navigate = useNavigate();
+  const { id } = useParams();
   const { toast } = useToast();
-  const { addSaree } = useApp();
+  const { sarees, updateSaree } = useApp();
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -25,18 +26,34 @@ const AddSaree = () => {
 
   const categories = ['Silk', 'Cotton', 'Partywear', 'Designer', 'Handloom'];
 
+  useEffect(() => {
+    const saree = sarees.find(s => s.id === id);
+    if (saree) {
+      setFormData({
+        name: saree.name,
+        category: saree.category,
+        price: saree.price.toString(),
+        stock: saree.stock.toString(),
+        notes: saree.notes,
+        image: saree.image || '',
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: "Saree not found.",
+        variant: "destructive"
+      });
+      navigate('/catalog');
+    }
+  }, [id, sarees, navigate, toast]);
+
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({ ...prev, image: e.target.value }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Basic validation
     if (!formData.name || !formData.category || !formData.price || !formData.stock) {
       toast({
         title: "Validation Error",
@@ -46,57 +63,49 @@ const AddSaree = () => {
       return;
     }
 
-    // Add saree to context
-    addSaree({
-      name: formData.name,
-      category: formData.category,
-      price: parseFloat(formData.price),
-      stock: parseInt(formData.stock),
-      notes: formData.notes,
-      image: formData.image || undefined
-    });
+    try {
+      await updateSaree(id!, {
+        name: formData.name,
+        category: formData.category,
+        price: parseFloat(formData.price),
+        stock: parseInt(formData.stock),
+        notes: formData.notes,
+        image: formData.image || undefined
+      });
 
-    toast({
-      title: "Success!",
-      description: `${formData.name} has been added to your catalog.`,
-    });
+      toast({
+        title: "Success!",
+        description: `${formData.name} has been updated.`,
+      });
 
-    // Reset form and navigate back
-    setFormData({
-      name: '',
-      category: '',
-      price: '',
-      stock: '',
-      notes: '',
-      image: '',
-    });
-    
-    setTimeout(() => navigate('/catalog'), 1000);
+      navigate('/catalog');
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update saree.",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Header */}
       <div className="flex items-center space-x-4">
         <Button variant="outline" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft size={16} />
         </Button>
         <div>
-          <h1 className="font-elegant text-3xl font-bold text-primary">Add New Saree</h1>
-          <p className="text-muted-foreground">Add a beautiful saree to your collection</p>
+          <h1 className="font-elegant text-3xl font-bold text-primary">Edit Saree</h1>
+          <p className="text-muted-foreground">Update saree details</p>
         </div>
       </div>
 
-      {/* Form */}
       <Card className="shadow-soft">
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <span>Saree Details</span>
-          </CardTitle>
+          <CardTitle>Saree Details</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Image URL */}
             <div className="space-y-2">
               <Label htmlFor="image">Saree Image URL</Label>
               <Input
@@ -104,14 +113,10 @@ const AddSaree = () => {
                 type="url"
                 placeholder="https://example.com/saree-image.jpg"
                 value={formData.image}
-                onChange={handleImageChange}
+                onChange={(e) => handleInputChange('image', e.target.value)}
               />
-              <p className="text-sm text-muted-foreground">
-                Enter a valid image URL (supports .jpg, .png, .webp, etc.)
-              </p>
             </div>
 
-            {/* Basic Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Saree Name *</Label>
@@ -141,7 +146,6 @@ const AddSaree = () => {
               </div>
             </div>
 
-            {/* Price and Stock */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="price">Price (₹) *</Label>
@@ -168,23 +172,21 @@ const AddSaree = () => {
               </div>
             </div>
 
-            {/* Notes */}
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
               <Textarea
                 id="notes"
-                placeholder="Additional details about the saree (fabric, design, care instructions, etc.)"
+                placeholder="Additional details about the saree"
                 rows={3}
                 value={formData.notes}
                 onChange={(e) => handleInputChange('notes', e.target.value)}
               />
             </div>
 
-            {/* Actions */}
             <div className="flex gap-4 pt-4">
               <Button type="submit" className="flex-1">
                 <Save size={16} className="mr-2" />
-                Save Saree
+                Update Saree
               </Button>
               <Button type="button" variant="outline" onClick={() => navigate(-1)}>
                 Cancel
@@ -197,4 +199,4 @@ const AddSaree = () => {
   );
 };
 
-export default AddSaree;
+export default EditSaree;

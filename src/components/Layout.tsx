@@ -36,20 +36,20 @@ const Layout = ({ children }: LayoutProps) => {
               </div>
             </div>
             
-            {/* Mobile-friendly navigation */}
-            <nav className="hidden md:flex space-x-6">
+            {/* Tablet and Desktop navigation */}
+            <nav className="hidden md:flex space-x-2 lg:space-x-6">
               {navigationItems.map((item) => (
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-md transition-colors ${
+                  className={`flex items-center space-x-1 lg:space-x-2 px-2 lg:px-3 py-2 rounded-md transition-colors ${
                     isActive(item.path)
                       ? 'bg-primary text-primary-foreground shadow-soft'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                   }`}
                 >
                   <item.icon size={16} />
-                  <span>{item.label}</span>
+                  <span className="text-sm lg:text-base">{item.label}</span>
                 </Link>
               ))}
             </nav>
@@ -64,19 +64,19 @@ const Layout = ({ children }: LayoutProps) => {
 
       {/* Mobile Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t shadow-warm">
-        <div className="flex items-center justify-around py-2">
+        <div className="flex items-center justify-around py-1">
           {navigationItems.map((item) => (
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center space-y-1 px-3 py-2 rounded-md transition-colors ${
+              className={`flex flex-col items-center space-y-0.5 px-1 py-1.5 rounded-md transition-colors min-w-0 flex-1 ${
                 isActive(item.path)
                   ? 'text-primary'
                   : 'text-muted-foreground'
               }`}
             >
-              <item.icon size={20} />
-              <span className="text-xs">{item.label}</span>
+              <item.icon size={18} />
+              <span className="text-[10px] leading-tight truncate">{item.label}</span>
             </Link>
           ))}
         </div>

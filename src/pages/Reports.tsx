@@ -159,16 +159,20 @@ const Reports = () => {
                 const percentage = totalSales > 0 ? (amount / totalSales) * 100 : 0;
                 return (
                   <div key={category} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{category}</span>
-                      <span className="text-sm text-muted-foreground">
-                        ₹{amount.toLocaleString()} ({percentage.toFixed(1)}%)
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium truncate">{category}</span>
+                      <span className="text-sm text-muted-foreground text-right whitespace-nowrap">
+                        ₹{amount.toLocaleString()}
                       </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>{Object.values(sareesSold).filter(item => item.saree.category === category).reduce((sum, item) => sum + item.quantity, 0)} sarees sold</span>
+                      <span>{percentage.toFixed(1)}%</span>
                     </div>
                     <div className="w-full bg-secondary rounded-full h-2">
                       <div 
-                        className="bg-primary h-2 rounded-full" 
-                        style={{ width: `${percentage}%` }}
+                        className="bg-primary h-2 rounded-full transition-all duration-300" 
+                        style={{ width: `${Math.min(percentage, 100)}%` }}
                       />
                     </div>
                   </div>

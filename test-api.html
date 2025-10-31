@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Django API</title>
+</head>
+<body>
+    <h1>Django API Test</h1>
+    <button onclick="testAPI()">Test API Connection</button>
+    <div id="result"></div>
+
+    <script>
+        async function testAPI() {
+            const result = document.getElementById('result');
+            result.innerHTML = 'Testing...';
+            
+            try {
+                const response = await fetch('http://127.0.0.1:8000/sarees/');
+                const data = await response.json();
+                result.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                result.innerHTML = `<p style="color: red;">Error: ${error.message}</p>
+                <p>Make sure:</p>
+                <ul>
+                    <li>Django server is running on port 8000</li>
+                    <li>CORS is properly configured</li>
+                    <li>API endpoints are accessible</li>
+                </ul>`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -7,7 +7,19 @@ import heroSarees from '@/assets/hero-sarees.jpg';
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { sarees, customers, orders } = useApp();
+  const { sarees, customers, orders, loading } = useApp();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-lg font-medium">Loading data from Django API...</p>
+          <p className="text-sm text-muted-foreground mt-2">Make sure Django server is running on port 8000</p>
+        </div>
+      </div>
+    );
+  }
 
   // Calculate real-time stats
   const totalSarees = sarees.length;
@@ -160,27 +172,50 @@ const Dashboard = () => {
           Recent Activity
         </h2>
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-            <div>
-              <p className="font-medium">New order from Priya Sharma</p>
-              <p className="text-sm text-muted-foreground">2 sarees • ₹8,500</p>
+          {/* Recent Orders */}
+          {orders.slice(0, 2).map((order) => {
+            const customer = customers.find(c => c.id === order.customerId);
+            const timeAgo = Math.floor((Date.now() - new Date(order.date).getTime()) / (1000 * 60 * 60));
+            return (
+              <div key={order.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                <div>
+                  <p className="font-medium">New order from {customer?.name || 'Unknown'}</p>
+                  <p className="text-sm text-muted-foreground">{order.items.length} items • ₹{order.totalAmount.toLocaleString()}</p>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {timeAgo < 1 ? 'Just now' : timeAgo < 24 ? `${timeAgo}h ago` : `${Math.floor(timeAgo/24)}d ago`}
+                </span>
+              </div>
+            );
+          })}
+          
+          {/* Low Stock Alerts */}
+          {sarees.filter(s => s.stock <= 2 && s.stock > 0).slice(0, 2).map((saree) => (
+            <div key={saree.id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+              <div>
+                <p className="font-medium">Low stock alert</p>
+                <p className="text-sm text-muted-foreground">{saree.name} - {saree.stock} piece{saree.stock !== 1 ? 's' : ''} left</p>
+              </div>
+              <span className="text-xs text-yellow-600 font-medium">Action needed</span>
             </div>
-            <span className="text-xs text-muted-foreground">2 hours ago</span>
-          </div>
-          <div className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-            <div>
-              <p className="font-medium">Added Banarasi Silk Saree</p>
-              <p className="text-sm text-muted-foreground">Stock: 3 pieces</p>
+          ))}
+          
+          {/* Out of Stock Alerts */}
+          {sarees.filter(s => s.stock === 0).slice(0, 1).map((saree) => (
+            <div key={saree.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+              <div>
+                <p className="font-medium">Out of stock</p>
+                <p className="text-sm text-muted-foreground">{saree.name} - Restock needed</p>
+              </div>
+              <span className="text-xs text-red-600 font-medium">Urgent</span>
             </div>
-            <span className="text-xs text-muted-foreground">4 hours ago</span>
-          </div>
-          <div className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-            <div>
-              <p className="font-medium">Low stock alert</p>
-              <p className="text-sm text-muted-foreground">Kanjeevaram Silk - 1 piece left</p>
+          ))}
+          
+          {orders.length === 0 && sarees.filter(s => s.stock <= 2).length === 0 && (
+            <div className="text-center py-4">
+              <p className="text-muted-foreground">No recent activity</p>
             </div>
-            <span className="text-xs text-muted-foreground">1 day ago</span>
-          </div>
+          )}
         </div>
       </div>
     </div>

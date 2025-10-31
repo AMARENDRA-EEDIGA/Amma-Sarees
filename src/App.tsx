@@ -8,6 +8,7 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Catalog from "./pages/Catalog";
 import AddSaree from "./pages/AddSaree";
+import EditSaree from "./pages/EditSaree";
 import Customers from "./pages/Customers";
 import Orders from "./pages/Orders";
 import Reports from "./pages/Reports";
@@ -27,6 +28,7 @@ const App = () => (
               <Route path="/" element={<Dashboard />} />
               <Route path="/catalog" element={<Catalog />} />
               <Route path="/add-saree" element={<AddSaree />} />
+              <Route path="/edit-saree/:id" element={<EditSaree />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/orders" element={<Orders />} />
               <Route path="/reports" element={<Reports />} />
