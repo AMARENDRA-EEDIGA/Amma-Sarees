@@ -113,6 +113,32 @@ This application is **production-ready** with:
 - ✅ Real-time stock management
 - ✅ Business analytics and reporting
 
+## 📁 Project Structure
+
+```
+ama-saree-suite/
+├── src/
+│   ├── components/         # Reusable UI components
+│   │   ├── ui/            # shadcn/ui components
+│   │   ├── Layout.tsx     # Main layout with navigation
+│   │   └── ...
+│   ├── pages/             # Route-level pages
+│   │   ├── Dashboard.tsx  # Main dashboard
+│   │   ├── Catalog.tsx    # Saree catalog
+│   │   ├── Orders.tsx     # Order management
+│   │   └── ...
+│   ├── contexts/          # State management
+│   │   └── AppContext.tsx # Global app state
+│   ├── hooks/             # Custom React hooks
+│   └── lib/               # Utilities
+├── backend/               # Django REST API
+│   ├── api/              # API endpoints
+│   ├── models.py         # Database models
+│   └── views.py          # API views
+├── public/               # Static assets
+└── docs/                 # Documentation
+```
+
 ## 📚 Documentation
 
 - `ARCHITECTURE.md` - Technical architecture details
