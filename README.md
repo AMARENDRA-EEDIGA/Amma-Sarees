@@ -81,17 +81,20 @@ python manage.py runserver 8000
 
 ## 🚀 Deployment
 
-### **Frontend**
+### **Quick Deploy**
+- **Backend**: Deploy to [Render](https://render.com) (Free tier available)
+- **Frontend**: Deploy to [Vercel](https://vercel.com) (Free tier available)
+
 ```bash
-npm run build
-# Deploy to Vercel, Netlify, or any static hosting
+# 1. Push to GitHub
+git push origin main
+
+# 2. Connect repositories to Render (backend) and Vercel (frontend)
+# 3. Set environment variables (see DEPLOYMENT.md)
+# 4. Deploy automatically!
 ```
 
-### **Backend**
-```bash
-# Deploy to Railway, Heroku, or DigitalOcean
-# See backend/README.md for detailed instructions
-```
+**📖 Full deployment guide**: See `DEPLOYMENT.md`
 
 ## 📋 Available Scripts
 
