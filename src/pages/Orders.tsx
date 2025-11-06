@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Search, Eye, CreditCard, CheckCircle, Clock, XCircle, Download, Edit, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -10,12 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useApp } from '@/contexts/AppContext';
+import { useApp, Order } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
 
 const Orders = () => {
-  const { orders, customers, sarees, addOrder, addPayment, updateOrderStatus, cancelOrder, loading } = useApp();
+  const { orders, customers, sarees, addOrder, addCustomer, addPayment, updateOrderStatus, cancelOrder, deleteOrder, loading } = useApp();
+  const { user, isAdmin, ensureCustomerProfile } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('All');
@@ -23,11 +25,13 @@ const Orders = () => {
   const [showPayment, setShowPayment] = useState<string | null>(null);
   const [showStatusChange, setShowStatusChange] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState<string | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'detail'>('table');
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   
   // New Order Form State
   const [newOrderData, setNewOrderData] = useState({
@@ -43,17 +47,20 @@ const Orders = () => {
     notes: ''
   });
   
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-lg font-medium">Loading orders...</p>
-        </div>
-      </div>
-    );
-  }
+  // Optimized loading - show partial content while loading
+  const isInitialLoading = loading && orders.length === 0;
+
+
+
+  // Simple loading state reset
+  useEffect(() => {
+    if (!loading) {
+      setIsCreatingOrder(false);
+      setIsAddingPayment(false);
+      setIsCancellingOrder(false);
+      setIsDeletingOrder(false);
+    }
+  }, [loading]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -73,19 +80,78 @@ const Orders = () => {
     }
   };
 
+  console.log('Current user:', user);
+  console.log('All orders:', orders);
+  console.log('Customer logins:', JSON.parse(localStorage.getItem('customerLogins') || '[]'));
+  
+  // Auto-fix customer ID mismatch for customers
+  useEffect(() => {
+    if (!isAdmin && user && orders.length > 0) {
+      const userOrderExists = orders.some(order => order.customerId === user.customerId);
+      if (!userOrderExists) {
+        // Find correct customerId by matching customer email
+        const correctOrder = orders.find(order => {
+          const customer = customers.find(c => c.id === order.customerId);
+          return customer?.email === user.email;
+        });
+        
+        if (correctOrder) {
+          const correctCustomerId = correctOrder.customerId;
+          // Update user profile
+          const updatedUser = { ...user, customerId: correctCustomerId };
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          
+          // Update login credentials
+          const customerLogins = JSON.parse(localStorage.getItem('customerLogins') || '[]');
+          const loginIndex = customerLogins.findIndex((login: any) => login.email === user.email);
+          if (loginIndex !== -1) {
+            customerLogins[loginIndex].customerId = correctCustomerId;
+            localStorage.setItem('customerLogins', JSON.stringify(customerLogins));
+          }
+          
+          // Force re-render by updating user state
+          window.location.reload();
+        }
+      }
+    }
+  }, [user, orders, customers, isAdmin]);
+
   const filteredOrders = orders.filter(order => {
+    // For customers, STRICTLY show only their own orders
+    if (!isAdmin) {
+      if (!user?.customerId) return false;
+      if (order.customerId !== user.customerId) return false;
+    }
+    
+    // For admin, show all orders with search/filter
     const customer = customers.find(c => c.id === order.customerId);
-    const matchesSearch = customer?.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = !searchTerm || 
+                         customer?.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          customer?.phone.includes(searchTerm);
     const matchesStatus = selectedStatus === 'All' || order.status === selectedStatus;
     return matchesSearch && matchesStatus;
   });
 
   const handleCreateOrder = async () => {
-    if (!newOrderData.customerId || newOrderData.items.length === 0) {
+    // For customers, auto-set their customer ID
+    let customerId = newOrderData.customerId;
+    if (!isAdmin) {
+      // Ensure customer profile exists
+      customerId = await ensureCustomerProfile();
+      if (!customerId) {
+        toast({
+          title: "❌ Error",
+          description: "Failed to create customer profile. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+    
+    if ((!customerId && isAdmin) || newOrderData.items.length === 0) {
       toast({
-        title: "Validation Error",
-        description: "Please select a customer and add at least one item.",
+        title: "❌ Validation Error",
+        description: isAdmin ? "Please select a customer and add at least one item." : "Please add at least one item to your order.",
         variant: "destructive"
       });
       return;
@@ -98,6 +164,7 @@ const Orders = () => {
       
       const orderData = {
         ...newOrderData,
+        customerId,
         totalAmount,
         paidAmount: 0,
         dueAmount: totalAmount,
@@ -108,28 +175,35 @@ const Orders = () => {
 
       await addOrder(orderData);
       
+      // Reset state BEFORE showing success to prevent white page
+      setNewOrderData({ customerId: '', items: [], notes: '' });
+      setShowNewOrder(false);
+      setViewMode('table');
+      setSelectedOrder(null);
+      setIsCreatingOrder(false);
+      
+      // Show success message after state reset
       toast({
         title: "Success!",
         description: "Order created successfully.",
+        className: "bg-green-50 border-green-200 text-green-800",
       });
-
-      setNewOrderData({ customerId: '', items: [], notes: '' });
-      setShowNewOrder(false);
+      
     } catch (error) {
+      console.error('Order creation error:', error);
+      setIsCreatingOrder(false);
       toast({
-        title: "Error",
-        description: "Failed to create order. Please try again.",
+        title: "❌ Error",
+        description: error instanceof Error ? error.message : "Failed to create order. Please try again.",
         variant: "destructive"
       });
-    } finally {
-      setIsCreatingOrder(false);
     }
   };
 
   const handleAddPayment = async (orderId: string) => {
     if (!paymentData.amount || parseFloat(paymentData.amount) <= 0) {
       toast({
-        title: "Validation Error",
+        title: "❌ Validation Error",
         description: "Please enter a valid payment amount.",
         variant: "destructive"
       });
@@ -148,24 +222,12 @@ const Orders = () => {
 
       await addPayment(orderId, payment);
       
-      // Update selected order if in detail view
-      if (selectedOrder && selectedOrder.id === orderId) {
-        // Wait a bit for the context to update
-        setTimeout(() => {
-          const updatedOrder = orders.find(o => o.id === orderId);
-          if (updatedOrder) {
-            setSelectedOrder(updatedOrder);
-          }
-        }, 100);
-      }
-      
       toast({
         title: "Success!",
         description: "Payment added successfully.",
+        className: "bg-green-50 border-green-200 text-green-800",
       });
 
-      setPaymentData({ amount: '', method: 'Cash', notes: '' });
-      setShowPayment(null);
     } catch (error) {
       toast({
         title: "Error",
@@ -174,38 +236,48 @@ const Orders = () => {
       });
     } finally {
       setIsAddingPayment(false);
+      setPaymentData({ amount: '', method: 'Cash', notes: '' });
+      setShowPayment(null);
     }
   };
 
-  const handleStatusChange = async (orderId: string, newStatus: string) => {
+  const handleStatusChange = async (orderId: string, newStatus: 'Pending' | 'Partial' | 'Paid' | 'Cancelled') => {
     if (newStatus === 'Cancelled') {
-      await handleCancelOrder(orderId);
+      setShowStatusChange(null);
+      setShowCancelConfirm(orderId);
       return;
     }
     
     try {
-      await updateOrderStatus(orderId, newStatus as any);
+      await updateOrderStatus(orderId, newStatus);
+      
       toast({
-        title: "Status Updated!",
+        title: "✅ Status Updated!",
         description: `Order status changed to ${newStatus}.`,
+        className: "bg-green-50 border-green-200 text-green-800",
       });
     } catch (error) {
+      console.error('Status change error:', error);
       toast({
-        title: "Error",
+        title: "❌ Error",
         description: "Failed to update order status.",
         variant: "destructive"
       });
+    } finally {
+      setShowStatusChange(null);
     }
-    setShowStatusChange(null);
   };
 
   const handleCancelOrder = async (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
-    if (!order) return;
+    if (!order) {
+      setShowCancelConfirm(null);
+      return;
+    }
     
     if (order.paidAmount > 0) {
       toast({
-        title: "Cannot Cancel Order",
+        title: "❌ Cannot Cancel Order",
         description: "Cannot cancel order with payments. Please refund payments first.",
         variant: "destructive"
       });
@@ -217,14 +289,18 @@ const Orders = () => {
     
     try {
       await cancelOrder(orderId);
+      
       toast({
-        title: "Order Cancelled!",
+        title: "✅ Order Cancelled!",
         description: "Order has been cancelled and stock has been restored.",
+        className: "bg-green-50 border-green-200 text-green-800",
       });
-    } catch (error: any) {
+      
+    } catch (error: unknown) {
+      console.error('Cancel order error:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to cancel order.",
+        title: "❌ Error",
+        description: error instanceof Error ? error.message : "Failed to cancel order.",
         variant: "destructive"
       });
     } finally {
@@ -233,7 +309,32 @@ const Orders = () => {
     }
   };
 
-  const generateInvoice = (order: any) => {
+  const handleDeleteOrder = async (orderId: string) => {
+    setIsDeletingOrder(true);
+    
+    try {
+      await deleteOrder(orderId);
+      
+      toast({
+        title: "✅ Order Deleted!",
+        description: "Order has been permanently deleted.",
+        className: "bg-green-50 border-green-200 text-green-800",
+      });
+      
+    } catch (error: unknown) {
+      console.error('Delete order error:', error);
+      toast({
+        title: "❌ Error",
+        description: error instanceof Error ? error.message : "Failed to delete order.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDeletingOrder(false);
+      setShowDeleteConfirm(null);
+    }
+  };
+
+  const generateInvoice = (order: Order) => {
     const doc = new jsPDF();
     const customer = customers.find(c => c.id === order.customerId);
     
@@ -286,7 +387,7 @@ const Orders = () => {
     doc.setFont('helvetica', 'normal');
     let itemTotal = 0;
     
-    order.items.forEach((item: any) => {
+    order.items.forEach((item) => {
       const saree = sarees.find(s => s.id === item.sareeId);
       const itemName = saree?.name || 'Unknown Item';
       const category = saree?.category || 'N/A';
@@ -325,7 +426,7 @@ const Orders = () => {
       yPos += 7;
       
       doc.setFont('helvetica', 'normal');
-      order.payments.forEach((payment: any) => {
+      order.payments.forEach((payment) => {
         const paymentDate = new Date(payment.date).toLocaleDateString('en-IN');
         const paymentText = paymentDate + ' - Rs.' + String(payment.amount) + ' (' + payment.method + ')';
         doc.text(paymentText, 20, yPos);
@@ -341,8 +442,9 @@ const Orders = () => {
     // Save the PDF
     doc.save(`invoice-${order.id.slice(-8)}.pdf`);
     toast({
-      title: "Success!",
+      title: "✅ Success!",
       description: "Invoice downloaded successfully!",
+      className: "bg-green-50 border-green-200 text-green-800",
     });
   };
 
@@ -350,7 +452,7 @@ const Orders = () => {
     const saree = sarees.find(s => s.id === sareeId);
     if (!saree || saree.stock <= 0) {
       toast({
-        title: "Error",
+        title: "❌ Error",
         description: "Saree is out of stock.",
         variant: "destructive"
       });
@@ -375,13 +477,22 @@ const Orders = () => {
     }
   };
 
-  const handleView = (order: any) => {
+  const handleView = (order: Order) => {
     setSelectedOrder(order);
     setViewMode('detail');
   };
 
+  // Prevent rendering detail view if data is inconsistent
   if (viewMode === 'detail' && selectedOrder) {
     const customer = customers.find(c => c.id === selectedOrder.customerId);
+    
+    // Safety check - if order is not found in current orders list, go back to table view
+    const currentOrder = orders.find(o => o.id === selectedOrder.id);
+    if (!currentOrder) {
+      setViewMode('table');
+      setSelectedOrder(null);
+    } else {
+    
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
@@ -428,7 +539,7 @@ const Orders = () => {
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Items</label>
                 <div className="space-y-2 mt-2">
-                  {selectedOrder.items.map((item: any, index: number) => {
+                  {selectedOrder.items.map((item, index: number) => {
                     const saree = sarees.find(s => s.id === item.sareeId);
                     return (
                       <div key={index} className="flex justify-between items-center p-2 bg-accent/10 rounded">
@@ -459,7 +570,7 @@ const Orders = () => {
             <CardContent>
               {selectedOrder.payments.length > 0 ? (
                 <div className="space-y-3">
-                  {selectedOrder.payments.map((payment: any) => (
+                  {selectedOrder.payments.map((payment) => (
                     <div key={payment.id} className="flex justify-between items-center p-3 bg-secondary rounded-lg">
                       <div>
                         <p className="font-medium">₹{payment.amount.toLocaleString()}</p>
@@ -473,13 +584,14 @@ const Orders = () => {
                 <p className="text-sm text-muted-foreground text-center py-4">No payments yet</p>
               )}
               
-              <div className="flex gap-2 pt-4">
-                {selectedOrder.dueAmount > 0 && selectedOrder.status !== 'Cancelled' && (
+              <div className="flex flex-col sm:flex-row gap-2 pt-4">
+                {isAdmin && selectedOrder.dueAmount > 0 && selectedOrder.status !== 'Cancelled' && (
                   <Dialog open={showPayment === selectedOrder.id} onOpenChange={(open) => setShowPayment(open ? selectedOrder.id : null)}>
                     <DialogTrigger asChild>
-                      <Button className="flex-1">
+                      <Button className="w-full sm:flex-1">
                         <CreditCard size={16} className="mr-2" />
-                        Add Payment
+                        <span className="hidden sm:inline">Add Payment</span>
+                        <span className="sm:hidden">Payment</span>
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
@@ -500,8 +612,8 @@ const Orders = () => {
                         </div>
                         <div>
                           <Label htmlFor="method">Payment Method *</Label>
-                          <Select value={paymentData.method} onValueChange={(value: any) => 
-                            setPaymentData(prev => ({ ...prev, method: value }))
+                          <Select value={paymentData.method} onValueChange={(value) => 
+                            setPaymentData(prev => ({ ...prev, method: value as 'Cash' | 'UPI' | 'Other' }))
                           }>
                             <SelectTrigger>
                               <SelectValue />
@@ -534,17 +646,20 @@ const Orders = () => {
                     </DialogContent>
                   </Dialog>
                 )}
-                <Button variant="outline" onClick={() => generateInvoice(selectedOrder)}>
+                <Button variant="outline" onClick={() => generateInvoice(selectedOrder)} className="w-full sm:flex-1">
                   <Download size={16} className="mr-2" />
-                  Invoice
+                  <span className="hidden sm:inline">Download Invoice</span>
+                  <span className="sm:hidden">Invoice</span>
                 </Button>
-                {selectedOrder.status !== 'Cancelled' && selectedOrder.paidAmount === 0 && (
+                {isAdmin && selectedOrder.status !== 'Cancelled' && selectedOrder.paidAmount === 0 && (
                   <Button 
                     variant="destructive" 
                     onClick={() => setShowCancelConfirm(selectedOrder.id)}
+                    className="w-full sm:flex-1"
                   >
                     <XCircle size={16} className="mr-2" />
-                    Cancel Order
+                    <span className="hidden sm:inline">Cancel Order</span>
+                    <span className="sm:hidden">Cancel</span>
                   </Button>
                 )}
               </div>
@@ -553,73 +668,119 @@ const Orders = () => {
         </div>
       </div>
     );
+    }
+  }
+
+  // Prevent white page by ensuring we always render something
+  if (isInitialLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            {[1,2,3,4].map(i => (
+              <div key={i} className="bg-gray-200 h-20 rounded-lg"></div>
+            ))}
+          </div>
+          <div className="bg-gray-200 h-96 rounded-lg"></div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-primary">{orders.length}</div>
-            <p className="text-sm text-muted-foreground">Total Orders</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-600">{orders.filter(o => o.status === 'Paid').length}</div>
-            <p className="text-sm text-muted-foreground">Paid Orders</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-yellow-600">{orders.filter(o => o.status === 'Partial').length}</div>
-            <p className="text-sm text-muted-foreground">Partial Payments</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-purple-600">₹{orders.reduce((sum, order) => sum + order.totalAmount, 0).toLocaleString()}</div>
-            <p className="text-sm text-muted-foreground">Total Revenue</p>
-          </CardContent>
-        </Card>
-      </div>
+      {isInitialLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="animate-pulse">
+              <div className="bg-gray-200 h-20 rounded-lg"></div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={`grid gap-6 ${isAdmin ? 'grid-cols-1 md:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-3xl font-bold text-primary">{filteredOrders.length}</div>
+              <p className="text-sm text-muted-foreground mt-1">{isAdmin ? 'Total Orders' : 'My Orders'}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-3xl font-bold text-green-600">{filteredOrders.filter(o => o.status === 'Paid').length}</div>
+              <p className="text-sm text-muted-foreground mt-1">Completed Orders</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-3xl font-bold text-yellow-600">
+                {isAdmin 
+                  ? filteredOrders.filter(o => o.status === 'Partial').length
+                  : filteredOrders.filter(o => o.status === 'Pending').length
+                }
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">{isAdmin ? 'Partial Payments' : 'Pending Orders'}</p>
+            </CardContent>
+          </Card>
+          {isAdmin && (
+            <Card>
+              <CardContent className="p-6">
+                <div className="text-3xl font-bold text-blue-600">
+                  ₹{filteredOrders.reduce((sum, order) => sum + order.paidAmount, 0).toLocaleString()}
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">Total Revenue</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="font-elegant text-3xl font-bold text-primary">Orders</h1>
-          <p className="text-muted-foreground">Manage customer orders and payments</p>
+          <h1 className="font-elegant text-3xl font-bold text-primary">{isAdmin ? 'Orders' : 'My Orders'}</h1>
+          <p className="text-muted-foreground">{isAdmin ? 'Manage customer orders and payments' : 'View your order history and track status'}</p>
         </div>
-        <Dialog open={showNewOrder} onOpenChange={setShowNewOrder}>
+        <Dialog open={showNewOrder} onOpenChange={(open) => {
+          if (!open) {
+            // Reset form when closing dialog
+            setNewOrderData({ customerId: '', items: [], notes: '' });
+          }
+          setShowNewOrder(open);
+        }}>
           <DialogTrigger asChild>
             <Button className="gradient-warm shadow-soft">
               <Plus size={16} className="mr-2" />
-              New Order
+              {isAdmin ? 'New Order' : 'Place Order'}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto mx-4">
             <DialogHeader>
-              <DialogTitle>Create New Order</DialogTitle>
+              <DialogTitle>{isAdmin ? 'Create New Order' : 'Place Your Order'}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="customer">Customer *</Label>
-                <Select value={newOrderData.customerId} onValueChange={(value) => 
-                  setNewOrderData(prev => ({ ...prev, customerId: value }))
-                }>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((customer) => (
-                      <SelectItem key={customer.id} value={customer.id}>
-                        {customer.name} - {customer.phone}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {isAdmin && (
+                <div>
+                  <Label htmlFor="customer">Customer *</Label>
+                  <Select value={newOrderData.customerId} onValueChange={(value) => 
+                    setNewOrderData(prev => ({ ...prev, customerId: value }))
+                  }>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customers.map((customer) => (
+                        <SelectItem key={customer.id} value={customer.id}>
+                          {customer.name} - {customer.phone}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div>
                 <Label>Add Sarees</Label>
@@ -642,7 +803,7 @@ const Orders = () => {
                 <div>
                   <Label>Order Items</Label>
                   <div className="space-y-2">
-                    {newOrderData.items.map((item, index) => {
+                    {newOrderData.items.map((item, index: number) => {
                       const saree = sarees.find(s => s.id === item.sareeId);
                       return (
                         <div key={index} className="flex items-center justify-between p-3 bg-secondary rounded">
@@ -684,7 +845,7 @@ const Orders = () => {
 
               <div className="flex gap-4">
                 <Button onClick={handleCreateOrder} className="flex-1" disabled={isCreatingOrder}>
-                  {isCreatingOrder ? 'Creating...' : 'Create Order'}
+                  {isCreatingOrder ? (isAdmin ? 'Creating...' : 'Placing...') : (isAdmin ? 'Create Order' : 'Place Order')}
                 </Button>
                 <Button variant="outline" onClick={() => setShowNewOrder(false)} disabled={isCreatingOrder}>
                   Cancel
@@ -769,13 +930,13 @@ const Orders = () => {
                             <Eye size={16} className="mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          {order.dueAmount > 0 && (
+                          {isAdmin && order.dueAmount > 0 && (
                             <DropdownMenuItem onClick={() => setShowPayment(order.id)}>
                               <CreditCard size={16} className="mr-2" />
                               Add Payment
                             </DropdownMenuItem>
                           )}
-                          {order.status !== 'Cancelled' && (
+                          {isAdmin && order.status !== 'Cancelled' && (
                             <DropdownMenuItem onClick={() => setShowStatusChange(order.id)}>
                               <Edit size={16} className="mr-2" />
                               Change Status
@@ -793,6 +954,13 @@ const Orders = () => {
                           <DropdownMenuItem onClick={() => generateInvoice(order)}>
                             <Download size={16} className="mr-2" />
                             Download Invoice
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => setShowDeleteConfirm(order.id)}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 size={16} className="mr-2" />
+                            Delete Order
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -831,8 +999,8 @@ const Orders = () => {
             </div>
             <div>
               <Label htmlFor="method">Payment Method *</Label>
-              <Select value={paymentData.method} onValueChange={(value: any) => 
-                setPaymentData(prev => ({ ...prev, method: value }))
+              <Select value={paymentData.method} onValueChange={(value) => 
+                setPaymentData(prev => ({ ...prev, method: value as 'Cash' | 'UPI' | 'Other' }))
               }>
                 <SelectTrigger>
                   <SelectValue />
@@ -874,7 +1042,7 @@ const Orders = () => {
           <div className="space-y-4">
             <div>
               <Label htmlFor="newStatus">New Status *</Label>
-              <Select onValueChange={(value) => showStatusChange && handleStatusChange(showStatusChange, value)}>
+              <Select onValueChange={(value) => showStatusChange && handleStatusChange(showStatusChange, value as 'Pending' | 'Partial' | 'Paid' | 'Cancelled')}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select new status" />
                 </SelectTrigger>
@@ -908,7 +1076,11 @@ const Orders = () => {
             <div className="flex gap-4 pt-4">
               <Button 
                 variant="destructive" 
-                onClick={() => showCancelConfirm && handleCancelOrder(showCancelConfirm)}
+                onClick={() => {
+                  if (showCancelConfirm && !isCancellingOrder) {
+                    handleCancelOrder(showCancelConfirm);
+                  }
+                }}
                 disabled={isCancellingOrder}
                 className="flex-1"
               >
@@ -918,6 +1090,47 @@ const Orders = () => {
                 variant="outline" 
                 onClick={() => setShowCancelConfirm(null)}
                 disabled={isCancellingOrder}
+                className="flex-1"
+              >
+                Keep Order
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Order Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm !== null} onOpenChange={(open) => setShowDeleteConfirm(open ? showDeleteConfirm : null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Order</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to permanently delete this order? This action:
+            </p>
+            <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+              <li>Will permanently remove the order from the system</li>
+              <li>Cannot be undone</li>
+              <li>Will not affect stock levels</li>
+            </ul>
+            <div className="flex gap-4 pt-4">
+              <Button 
+                variant="destructive" 
+                onClick={() => {
+                  if (showDeleteConfirm && !isDeletingOrder) {
+                    handleDeleteOrder(showDeleteConfirm);
+                  }
+                }}
+                disabled={isDeletingOrder}
+                className="flex-1"
+              >
+                {isDeletingOrder ? 'Deleting...' : 'Yes, Delete Order'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowDeleteConfirm(null)}
+                disabled={isDeletingOrder}
                 className="flex-1"
               >
                 Keep Order

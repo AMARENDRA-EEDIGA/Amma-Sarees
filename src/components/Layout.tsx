@@ -1,7 +1,12 @@
 import { ReactNode } from 'react';
-import { Palette, Home, Package, Users, ShoppingCart, BarChart3 } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Palette, Home, Package, Users, ShoppingCart, BarChart3, LogOut, User, UserCog } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import paisleyLogo from '@/assets/paisley-logo.png';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import NotificationBell from '@/components/NotificationBell';
 
 interface LayoutProps {
   children: ReactNode;
@@ -9,13 +14,19 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout, isAdmin } = useAuth();
   
-  const navigationItems = [
+  const navigationItems = isAdmin ? [
     { path: '/', icon: Home, label: 'Dashboard' },
     { path: '/catalog', icon: Package, label: 'Catalog' },
     { path: '/customers', icon: Users, label: 'Customers' },
     { path: '/orders', icon: ShoppingCart, label: 'Orders' },
-    { path: '/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/reports', icon: BarChart3, label: 'Reports' }
+  ] : [
+    { path: '/', icon: Home, label: 'Home' },
+    { path: '/catalog', icon: Package, label: 'Browse Sarees' },
+    { path: '/orders', icon: ShoppingCart, label: 'My Orders' }
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -53,6 +64,41 @@ const Layout = ({ children }: LayoutProps) => {
                 </Link>
               ))}
             </nav>
+            <div className="flex items-center gap-4">
+              <NotificationBell />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src="" alt={user?.name} />
+                      <AvatarFallback className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+                        {user?.name ? user.name.substring(0, 2).toUpperCase() : "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <div className="flex items-center justify-start gap-2 p-2">
+                    <div className="flex flex-col space-y-1 leading-none">
+                      {user?.name && (
+                        <p className="font-medium">{user.name}</p>
+                      )}
+                      {user?.email && (
+                        <p className="w-[200px] truncate text-sm text-muted-foreground">
+                          {user.email}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">Role: {user?.role}</p>
+                    </div>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => logout()}>
+                    <LogOut size={16} className="mr-2" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
       </header>

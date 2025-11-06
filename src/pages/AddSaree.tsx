@@ -59,6 +59,7 @@ const AddSaree = () => {
     toast({
       title: "Success!",
       description: `${formData.name} has been added to your catalog.`,
+      className: "bg-green-50 border-green-200 text-green-800",
     });
 
     // Reset form and navigate back

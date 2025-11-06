@@ -61,6 +61,8 @@ interface AppContextType {
   addOrder: (order: Omit<Order, 'id'>) => Promise<void>;
   addPayment: (orderId: string, payment: Omit<Payment, 'id'>) => Promise<void>;
   updateOrderStatus: (orderId: string, status: Order['status']) => Promise<void>;
+  cancelOrder?: (orderId: string) => Promise<void>;
+  deleteOrder?: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
 }
 
@@ -118,15 +120,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const refreshData = async () => {
     try {
       setLoading(true);
-      const [sareesResponse, customersResponse, ordersResponse] = await Promise.all([
-        apiService.getSarees(),
-        apiService.getCustomers(),
-        apiService.getOrders(),
-      ]);
-
-      setSarees(sareesResponse.results.map(transformSaree));
-      setCustomers(customersResponse.results.map(transformCustomer));
-      setOrders(ordersResponse.results.map(transformOrder));
+      
+      // Fetch sarees
+      try {
+        const sareesResponse = await apiService.getSarees();
+        const sareesData = sareesResponse?.results || sareesResponse || [];
+        setSarees(Array.isArray(sareesData) ? sareesData.map(transformSaree) : []);
+      } catch (error) {
+        console.error('Error fetching sarees:', error);
+        setSarees([]);
+      }
+      
+      // Fetch customers
+      try {
+        const customersResponse = await apiService.getCustomers();
+        const customersData = customersResponse?.results || customersResponse || [];
+        setCustomers(Array.isArray(customersData) ? customersData.map(transformCustomer) : []);
+      } catch (error) {
+        console.error('Error fetching customers:', error);
+        setCustomers([]);
+      }
+      
+      // Fetch orders
+      try {
+        const ordersResponse = await apiService.getOrders();
+        const ordersData = ordersResponse?.results || ordersResponse || [];
+        setOrders(Array.isArray(ordersData) ? ordersData.map(transformOrder) : []);
+      } catch (error) {
+        console.error('Error fetching orders:', error);
+        setOrders([]);
+      }
+      
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -255,6 +279,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       ));
     } catch (error) {
       console.error('Error updating order status:', error);
+      throw error;
+    }
+  };
+
+  const cancelOrder = async (orderId: string) => {
+    try {
+      await apiService.cancelOrder(orderId);
+      await refreshData();
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+      throw error;
+    }
+  };
+
+  const deleteOrder = async (id: string) => {
+    try {
+      await apiService.deleteOrder(id);
+      setOrders(prev => prev.filter(order => order.id !== id));
+    } catch (error) {
+      console.error('Error deleting order:', error);
       throw error;
     }
   };

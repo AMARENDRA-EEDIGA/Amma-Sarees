@@ -4,6 +4,14 @@
 
 Ama Saree is a comprehensive saree shop management system designed to streamline inventory management, customer tracking, and order processing. The application provides an intuitive interface for managing saree collections, tracking customer information, processing orders with payment tracking, and generating business reports.
 
+**Key Highlights:**
+- Full-stack application with React frontend and Django backend
+- Role-based authentication (Admin/Customer)
+- Real-time inventory management with stock tracking
+- Complete order lifecycle management
+- PWA support for mobile experience
+- Production-ready deployment configuration
+
 ## Technology Stack
 
 ### Core Technologies
@@ -21,7 +29,9 @@ Ama Saree is a comprehensive saree shop management system designed to streamline
 
 ### State Management & Data
 - **React Context API** - Global state management for sarees, customers, and orders
+- **AuthContext** - Authentication and user session management
 - **TanStack Query (React Query)** - Server state management and caching (ready for future API integration)
+- **LocalStorage** - Persistent storage for demo data and user sessions
 
 ### Data Visualization & Reporting
 - **Recharts 2.15.4** - Composable charting library for reports and analytics
@@ -35,6 +45,8 @@ Ama Saree is a comprehensive saree shop management system designed to streamline
 - **jsPDF 3.0.1** - Client-side PDF generation for reports and invoices
 - **Sonner** - Beautiful toast notifications
 - **Embla Carousel** - Touch-friendly carousel component
+- **PWA Support** - Service worker for offline capabilities
+- **WhatsApp Integration** - Direct sharing of product catalogs
 
 ## Architecture Design
 

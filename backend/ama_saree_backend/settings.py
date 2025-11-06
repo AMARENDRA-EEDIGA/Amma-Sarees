@@ -33,7 +33,9 @@ INSTALLED_APPS = [
 
     # Third-party apps
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
+    'django_filters',
 
     # Your backend app(s)
     'api',  # Ama Sarees main backend API
@@ -152,11 +154,15 @@ else:
 # ------------------------------------------------------------
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',  # ✅ Disabled permission checks
+        'rest_framework.permissions.AllowAny',
+    ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
     ],
 }
 
@@ -165,6 +171,11 @@ REST_FRAMEWORK = {
 # DEFAULT PRIMARY KEY FIELD
 # ------------------------------------------------------------
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ------------------------------------------------------------
+# CUSTOM USER MODEL (Temporarily disabled)
+# ------------------------------------------------------------
+# AUTH_USER_MODEL = 'api.User'
 
 
 # ------------------------------------------------------------

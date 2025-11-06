@@ -25,7 +25,10 @@ const Customers = () => {
     name: '',
     phone: '',
     address: '',
-    notes: ''
+    email: '',
+    notes: '',
+    createLogin: false,
+    password: ''
   });
 
   const filteredCustomers = customers.filter(customer =>
@@ -62,6 +65,7 @@ const Customers = () => {
         toast({
           title: "Success",
           description: `${customer.name} has been deleted.`,
+          className: "bg-green-50 border-green-200 text-green-800",
         });
       } catch (error) {
         toast({
@@ -84,7 +88,10 @@ const Customers = () => {
       name: customer.name,
       phone: customer.phone,
       address: customer.address,
-      notes: customer.notes
+      email: customer.email || '',
+      notes: customer.notes,
+      createLogin: false,
+      password: ''
     });
     setShowEditDialog(true);
   };
@@ -101,24 +108,69 @@ const Customers = () => {
       return;
     }
 
+    if (formData.createLogin && (!formData.email || !formData.password)) {
+      toast({
+        title: "Validation Error",
+        description: "Email and password are required for login access.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
+      const customerData: any = {
+        name: formData.name,
+        phone: formData.phone,
+        address: formData.address,
+        notes: formData.notes
+      };
+
+      // Only include email if it's valid
+      if (formData.email && formData.email.trim() && formData.email.includes('@')) {
+        customerData.email = formData.email;
+      }
+
       if (selectedCustomer && showEditDialog) {
-        await updateCustomer(selectedCustomer.id, formData);
+        await updateCustomer(selectedCustomer.id, customerData);
         toast({
           title: "Success!",
           description: `${formData.name} has been updated.`,
+          className: "bg-green-50 border-green-200 text-green-800",
         });
         setShowEditDialog(false);
       } else {
-        await addCustomer(formData);
+        await addCustomer(customerData);
+        
+        // Store login credentials if requested
+        if (formData.createLogin && formData.email && formData.password) {
+          // Wait a moment for the customer to be added to the state
+          setTimeout(() => {
+            const actualCustomerId = customers.find(c => c.email === formData.email)?.id;
+            
+            const existingLogins = JSON.parse(localStorage.getItem('customerLogins') || '[]');
+            existingLogins.push({
+              email: formData.email,
+              password: formData.password,
+              name: formData.name,
+              customerId: actualCustomerId || `customer-${Date.now()}`
+            });
+            localStorage.setItem('customerLogins', JSON.stringify(existingLogins));
+          }, 500);
+        }
+        
+        const successMessage = formData.createLogin 
+          ? `${formData.name} added with login access. Email: ${formData.email}`
+          : `${formData.name} has been added to your customers.`;
+        
         toast({
           title: "Success!",
-          description: `${formData.name} has been added to your customers.`,
+          description: successMessage,
+          className: "bg-green-50 border-green-200 text-green-800",
         });
         setShowAddDialog(false);
       }
       
-      setFormData({ name: '', phone: '', address: '', notes: '' });
+      setFormData({ name: '', phone: '', address: '', email: '', notes: '', createLogin: false, password: '' });
       setSelectedCustomer(null);
     } catch (error) {
       toast({
@@ -156,6 +208,12 @@ const Customers = () => {
                 <label className="text-sm font-medium text-muted-foreground">Phone</label>
                 <p className="text-sm">{selectedCustomer.phone}</p>
               </div>
+              {selectedCustomer.email && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">Email</label>
+                  <p className="text-sm">{selectedCustomer.email}</p>
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Address</label>
                 <p className="text-sm">{selectedCustomer.address || 'No address provided'}</p>
@@ -164,6 +222,30 @@ const Customers = () => {
                 <label className="text-sm font-medium text-muted-foreground">Notes</label>
                 <p className="text-sm">{selectedCustomer.notes || 'No notes'}</p>
               </div>
+              
+              {(() => {
+                const customerLogins = JSON.parse(localStorage.getItem('customerLogins') || '[]');
+                const loginCredentials = customerLogins.find((login: any) => 
+                  login.email === selectedCustomer.email || login.name === selectedCustomer.name
+                );
+                
+                return loginCredentials ? (
+                  <div className="space-y-2 p-3 bg-blue-50 rounded-lg border">
+                    <label className="text-sm font-medium text-blue-700">Login Credentials</label>
+                    <div className="space-y-1">
+                      <p className="text-sm"><span className="font-medium">Email:</span> {loginCredentials.email}</p>
+                      <p className="text-sm"><span className="font-medium">Password:</span> {loginCredentials.password}</p>
+                      <p className="text-xs text-blue-600">Customer can login with these credentials</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 p-3 bg-gray-50 rounded-lg border">
+                    <label className="text-sm font-medium text-gray-600">Login Access</label>
+                    <p className="text-sm text-gray-600">No login credentials created</p>
+                  </div>
+                );
+              })()}
+              
               <div className="flex gap-2 pt-4">
                 <Button onClick={() => handleEdit(selectedCustomer)} className="flex-1">
                   <Edit size={16} className="mr-2" />
@@ -295,7 +377,12 @@ const Customers = () => {
                 return (
                   <TableRow key={customer.id}>
                     <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell>{customer.phone}</TableCell>
+                    <TableCell>
+                      <div>
+                        <div>{customer.phone}</div>
+                        {customer.email && <div className="text-xs text-muted-foreground">{customer.email}</div>}
+                      </div>
+                    </TableCell>
                     <TableCell className="max-w-[200px] truncate">{customer.address || 'N/A'}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{stats.totalOrders}</Badge>
@@ -348,7 +435,7 @@ const Customers = () => {
           setShowAddDialog(false);
           setShowEditDialog(false);
           setSelectedCustomer(null);
-          setFormData({ name: '', phone: '', address: '', notes: '' });
+          setFormData({ name: '', phone: '', address: '', email: '', notes: '', createLogin: false, password: '' });
         }
       }}>
         <DialogContent>
@@ -361,7 +448,7 @@ const Customers = () => {
                 <Label htmlFor="name">Customer Name *</Label>
                 <Input
                   id="name"
-                  placeholder="e.g., Priya Sharma"
+                  placeholder="e.g., Sangeetha"
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   required
@@ -378,6 +465,51 @@ const Customers = () => {
                 />
               </div>
             </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="e.g., sangeetha@example.com"
+                value={formData.email}
+                onChange={(e) => handleInputChange('email', e.target.value)}
+              />
+            </div>
+            
+            {!showEditDialog && (
+              <div className="space-y-4 p-4 border rounded-lg bg-accent/5">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="createLogin"
+                    checked={formData.createLogin}
+                    onChange={(e) => handleInputChange('createLogin', e.target.checked.toString())}
+                    className="rounded"
+                  />
+                  <Label htmlFor="createLogin" className="text-sm font-medium">
+                    Create login access for this customer
+                  </Label>
+                </div>
+                
+                {formData.createLogin && (
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password *</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="Enter password for customer login"
+                      value={formData.password}
+                      onChange={(e) => handleInputChange('password', e.target.value)}
+                      required={formData.createLogin}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Customer will use their email and this password to login
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             
             <div className="space-y-2">
               <Label htmlFor="address">Address</Label>
@@ -408,7 +540,7 @@ const Customers = () => {
                 setShowAddDialog(false);
                 setShowEditDialog(false);
                 setSelectedCustomer(null);
-                setFormData({ name: '', phone: '', address: '', notes: '' });
+                setFormData({ name: '', phone: '', address: '', email: '', notes: '', createLogin: false, password: '' });
               }}>
                 Cancel
               </Button>

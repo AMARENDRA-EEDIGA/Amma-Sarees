@@ -3,23 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import StatsCard from '@/components/StatsCard';
 import QuickActionCard from '@/components/QuickActionCard';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import heroSarees from '@/assets/hero-sarees.jpg';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { sarees, customers, orders, loading } = useApp();
+  const { user, isAdmin } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-lg font-medium">Loading data from Django API...</p>
-          <p className="text-sm text-muted-foreground mt-2">Make sure Django server is running on port 8000</p>
-        </div>
-      </div>
-    );
-  }
+  const showSkeletons = loading && sarees.length === 0;
 
   // Calculate real-time stats
   const totalSarees = sarees.length;
@@ -33,7 +25,14 @@ const Dashboard = () => {
 
   const lowStockCount = sarees.filter(saree => saree.stock <= 2 && saree.stock > 0).length;
 
-  const stats = [
+  // Customer-specific stats - filter orders properly
+  const customerOrders = !isAdmin && user?.customerId 
+    ? orders.filter(order => order.customerId === user.customerId)
+    : orders;
+  const customerTotalSpent = customerOrders.reduce((sum, order) => sum + order.paidAmount, 0);
+  const customerPendingOrders = customerOrders.filter(order => order.status === 'Pending').length;
+
+  const stats = isAdmin ? [
     {
       title: 'Total Sarees',
       value: totalSarees,
@@ -62,9 +61,31 @@ const Dashboard = () => {
       trend: lowStockCount > 0 ? 'Items need restocking' : 'All items well stocked',
       color: 'secondary' as const,
     },
+  ] : [
+    {
+      title: 'Available Sarees',
+      value: sarees.filter(s => s.stock > 0).length,
+      icon: <Package size={24} />,
+      trend: `${totalSarees} total collection`,
+      color: 'primary' as const,
+    },
+    {
+      title: 'My Orders',
+      value: customerOrders.length,
+      icon: <ShoppingCart size={24} />,
+      trend: customerPendingOrders > 0 ? `${customerPendingOrders} pending` : 'All orders processed',
+      color: 'accent' as const,
+    },
+    {
+      title: 'Total Spent',
+      value: `₹${customerTotalSpent.toLocaleString()}`,
+      icon: <IndianRupee size={24} />,
+      trend: customerTotalSpent > 0 ? 'Thank you for shopping!' : 'Start shopping today',
+      color: 'secondary' as const,
+    },
   ];
 
-  const quickActions = [
+  const quickActions = isAdmin ? [
     {
       title: 'Add Saree',
       description: 'Add new saree to your catalog',
@@ -93,6 +114,21 @@ const Dashboard = () => {
       onClick: () => navigate('/customers'),
       variant: 'secondary' as const,
     },
+  ] : [
+    {
+      title: 'Browse Catalog',
+      description: 'View our beautiful saree collection',
+      icon: <Eye size={24} />,
+      onClick: () => navigate('/catalog'),
+      variant: 'default' as const,
+    },
+    {
+      title: 'My Orders',
+      description: 'View your order history',
+      icon: <ShoppingCart size={24} />,
+      onClick: () => navigate('/orders'),
+      variant: 'secondary' as const,
+    },
   ];
 
   return (
@@ -109,11 +145,13 @@ const Dashboard = () => {
         <div className="relative p-8">
           <div className="max-w-2xl">
             <h1 className="font-elegant text-3xl md:text-4xl font-bold mb-4 text-shadow-soft">
-              Welcome to Ama Sarees
+              Welcome to Ama Sarees{user?.name ? `, ${user.name}` : ''}
             </h1>
             <p className="text-lg opacity-95 mb-6">
-              Manage your beautiful saree collection with elegance and efficiency. 
-              Track inventory, customers, and orders all in one place.
+              {isAdmin 
+                ? 'Manage your beautiful saree collection with elegance and efficiency. Track inventory, customers, and orders all in one place.'
+                : 'Discover our exquisite collection of traditional and designer sarees. Browse, order, and track your purchases with ease.'
+              }
             </p>
             <div className="flex flex-wrap gap-4">
               <button 
@@ -134,25 +172,33 @@ const Dashboard = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
-          <StatsCard
-            key={index}
-            title={stat.title}
-            value={stat.value}
-            icon={stat.icon}
-            trend={stat.trend}
-            color={stat.color}
-          />
-        ))}
-      </div>
+      {showSkeletons ? (
+        <div className={`grid gap-6 ${isAdmin ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-w-4xl mx-auto'}`}>
+          {[1,2,3,4].slice(0, isAdmin ? 4 : 3).map(i => (
+            <div key={i} className="animate-pulse bg-gray-200 h-24 rounded-lg"></div>
+          ))}
+        </div>
+      ) : (
+        <div className={`grid gap-6 ${isAdmin ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-w-4xl mx-auto'}`}>
+          {stats.map((stat, index) => (
+            <StatsCard
+              key={index}
+              title={stat.title}
+              value={stat.value}
+              icon={stat.icon}
+              trend={stat.trend}
+              color={stat.color}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div>
-        <h2 className="font-elegant text-2xl font-semibold mb-6 text-primary">
+        <h2 className="font-elegant text-2xl font-semibold mb-6 text-primary text-center">
           Quick Actions
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className={`grid gap-6 ${isAdmin ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 max-w-2xl mx-auto'}`}>
           {quickActions.map((action, index) => (
             <QuickActionCard
               key={index}
@@ -172,15 +218,16 @@ const Dashboard = () => {
           Recent Activity
         </h2>
         <div className="space-y-3">
-          {/* Recent Orders */}
-          {orders.slice(0, 2).map((order) => {
+          {/* Recent Orders - Show for both admin and customers */}
+          {customerOrders.slice(0, 3).map((order) => {
             const customer = customers.find(c => c.id === order.customerId);
             const timeAgo = Math.floor((Date.now() - new Date(order.date).getTime()) / (1000 * 60 * 60));
             return (
               <div key={order.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
                 <div>
-                  <p className="font-medium">New order from {customer?.name || 'Unknown'}</p>
+                  <p className="font-medium">{isAdmin ? `Order from ${customer?.name || 'Unknown'}` : 'Your order'}</p>
                   <p className="text-sm text-muted-foreground">{order.items.length} items • ₹{order.totalAmount.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Status: {order.status}</p>
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {timeAgo < 1 ? 'Just now' : timeAgo < 24 ? `${timeAgo}h ago` : `${Math.floor(timeAgo/24)}d ago`}
@@ -189,8 +236,8 @@ const Dashboard = () => {
             );
           })}
           
-          {/* Low Stock Alerts */}
-          {sarees.filter(s => s.stock <= 2 && s.stock > 0).slice(0, 2).map((saree) => (
+          {/* Admin-only stock alerts */}
+          {isAdmin && sarees.filter(s => s.stock <= 2 && s.stock > 0).slice(0, 2).map((saree) => (
             <div key={saree.id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
               <div>
                 <p className="font-medium">Low stock alert</p>
@@ -200,8 +247,7 @@ const Dashboard = () => {
             </div>
           ))}
           
-          {/* Out of Stock Alerts */}
-          {sarees.filter(s => s.stock === 0).slice(0, 1).map((saree) => (
+          {isAdmin && sarees.filter(s => s.stock === 0).slice(0, 1).map((saree) => (
             <div key={saree.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
               <div>
                 <p className="font-medium">Out of stock</p>
@@ -211,9 +257,9 @@ const Dashboard = () => {
             </div>
           ))}
           
-          {orders.length === 0 && sarees.filter(s => s.stock <= 2).length === 0 && (
+          {customerOrders.length === 0 && (
             <div className="text-center py-4">
-              <p className="text-muted-foreground">No recent activity</p>
+              <p className="text-muted-foreground">{isAdmin ? 'No recent orders' : 'No orders yet'}</p>
             </div>
           )}
         </div>

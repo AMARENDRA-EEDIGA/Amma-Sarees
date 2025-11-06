@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Plus, Edit, Trash2, Eye, MoreHorizontal } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Eye, MoreHorizontal, Share, CheckSquare, Square } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Saree } from '@/contexts/AppContext';
 
@@ -16,11 +17,13 @@ const categories = ['All', 'Silk', 'Cotton', 'Partywear', 'Designer', 'Handloom'
 const Catalog = () => {
   const navigate = useNavigate();
   const { sarees, deleteSaree } = useApp();
+  const { isAdmin } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedSaree, setSelectedSaree] = useState<Saree | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'detail'>('table');
+  const [selectedSareesForSharing, setSelectedSareesForSharing] = useState<string[]>([]);
 
   const filteredSarees = sarees.filter(saree => {
     const matchesSearch = saree.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -28,10 +31,86 @@ const Catalog = () => {
     return matchesSearch && matchesCategory;
   });
 
-  const handleWhatsAppShare = (saree: typeof sarees[0]) => {
+  const handleWhatsAppShare = (saree: Saree) => {
     const message = `🥻 *${saree.name}*\n\n💰 Price: ₹${saree.price.toLocaleString()}\n📦 Stock: ${saree.stock} pieces\n📝 ${saree.description}\n\n*Ama Sarees* - Elegant Textiles at Home`;
+    
+    // If image exists, include it in the share
+    if (saree.image) {
+      // Create a temporary message with image
+      const imageUrl = saree.image.startsWith('http') ? saree.image : `${window.location.origin}/${saree.image}`;
+      
+      // Open WhatsApp with text first
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank');
+      
+      // Then open the image in a new tab for manual sharing
+      setTimeout(() => {
+        window.open(imageUrl, '_blank');
+      }, 500);
+    } else {
+      // Just share text if no image
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, '_blank');
+    }
+  }
+  
+  const handleMultipleWhatsAppShare = () => {
+    if (selectedSareesForSharing.length === 0) return;
+    
+    const selectedSareesData = sarees.filter(s => selectedSareesForSharing.includes(s.id));
+    
+    // Create a message with all selected sarees
+    let message = `🥻 *Saree Collection from Ama Sarees*\n\n`;
+    
+    selectedSareesData.forEach((saree, index) => {
+      message += `${index + 1}. *${saree.name}*\n`;
+      message += `   💰 Price: ₹${saree.price.toLocaleString()}\n`;
+      message += `   📦 Stock: ${saree.stock} pieces\n`;
+      if (saree.description) {
+        message += `   📝 ${saree.description}\n`;
+      }
+      message += `\n`;
+    });
+    
+    message += `*Ama Sarees* - Elegant Textiles at Home`;
+    
+    // Open WhatsApp with the message
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
+    
+    // If there are images, open them in new tabs for manual sharing
+    const sareesWithImages = selectedSareesData.filter(s => s.image);
+    if (sareesWithImages.length > 0) {
+      setTimeout(() => {
+        sareesWithImages.forEach(saree => {
+          const imageUrl = saree.image?.startsWith('http') ? saree.image : `${window.location.origin}/${saree.image}`;
+          window.open(imageUrl, '_blank');
+        });
+      }, 500);
+    }
+    
+    // Reset selection after sharing
+    setSelectedSareesForSharing([]);
+  }
+  
+  const toggleSareeSelection = (sareeId: string) => {
+    setSelectedSareesForSharing(prev => {
+      if (prev.includes(sareeId)) {
+        return prev.filter(id => id !== sareeId);
+      } else {
+        return [...prev, sareeId];
+      }
+    });
+  }
+  
+  const toggleAllSareesSelection = () => {
+    if (selectedSareesForSharing.length === filteredSarees.length) {
+      // If all are selected, deselect all
+      setSelectedSareesForSharing([]);
+    } else {
+      // Select all filtered sarees
+      setSelectedSareesForSharing(filteredSarees.map(s => s.id));
+    }
   }
 
   const handleDelete = async (saree: Saree) => {
@@ -41,6 +120,7 @@ const Catalog = () => {
         toast({
           title: "Success",
           description: `${saree.name} has been deleted.`,
+          className: "bg-green-50 border-green-200 text-green-800",
         });
       } catch (error) {
         toast({
@@ -108,16 +188,18 @@ const Catalog = () => {
                 <label className="text-sm font-medium text-muted-foreground">Notes</label>
                 <p className="text-sm">{selectedSaree.notes || 'No additional notes'}</p>
               </div>
-              <div className="flex gap-2 pt-4">
-                <Button onClick={() => navigate(`/edit-saree/${selectedSaree.id}`)} className="flex-1">
-                  <Edit size={16} className="mr-2" />
-                  Edit
-                </Button>
-                <Button variant="destructive" onClick={() => handleDelete(selectedSaree)}>
-                  <Trash2 size={16} className="mr-2" />
-                  Delete
-                </Button>
-              </div>
+              {isAdmin && (
+                <div className="flex gap-2 pt-4">
+                  <Button onClick={() => navigate(`/edit-saree/${selectedSaree.id}`)} className="flex-1">
+                    <Edit size={16} className="mr-2" />
+                    Edit
+                  </Button>
+                  <Button variant="destructive" onClick={() => handleDelete(selectedSaree)}>
+                    <Trash2 size={16} className="mr-2" />
+                    Delete
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -161,10 +243,24 @@ const Catalog = () => {
           <h1 className="font-elegant text-3xl font-bold text-primary">Saree Catalog</h1>
           <p className="text-muted-foreground">Manage your beautiful collection</p>
         </div>
-        <Button onClick={() => navigate('/add-saree')} className="gradient-warm shadow-soft">
-          <Plus size={16} className="mr-2" />
-          Add Saree
-        </Button>
+        <div className="flex gap-2">
+          {selectedSareesForSharing.length > 0 && (
+            <Button 
+              variant="default" 
+              onClick={handleMultipleWhatsAppShare}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Share size={16} className="mr-2" />
+              Share {selectedSareesForSharing.length} Saree{selectedSareesForSharing.length !== 1 ? 's' : ''}
+            </Button>
+          )}
+          {isAdmin && (
+            <Button onClick={() => navigate('/add-saree')} className="gradient-warm shadow-soft">
+              <Plus size={16} className="mr-2" />
+              Add Saree
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Search and Filter */}
@@ -201,6 +297,20 @@ const Catalog = () => {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[40px]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleAllSareesSelection}
+                    className="p-1 h-8 w-8"
+                  >
+                    {selectedSareesForSharing.length === filteredSarees.length && filteredSarees.length > 0 ? (
+                      <CheckSquare size={16} className="text-green-600" />
+                    ) : (
+                      <Square size={16} />
+                    )}
+                  </Button>
+                </TableHead>
                 <TableHead>Image</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
@@ -215,6 +325,20 @@ const Catalog = () => {
                 const stockStatus = getStockStatus(saree.stock);
                 return (
                   <TableRow key={saree.id}>
+                    <TableCell className="w-[40px]">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleSareeSelection(saree.id)}
+                        className="p-1 h-8 w-8"
+                      >
+                        {selectedSareesForSharing.includes(saree.id) ? (
+                          <CheckSquare size={16} className="text-green-600" />
+                        ) : (
+                          <Square size={16} />
+                        )}
+                      </Button>
+                    </TableCell>
                     <TableCell>
                       <img 
                         src={saree.image || '/placeholder.svg'} 
@@ -243,17 +367,25 @@ const Catalog = () => {
                             <Eye size={16} className="mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => navigate(`/edit-saree/${saree.id}`)}>
-                            <Edit size={16} className="mr-2" />
-                            Edit
+                          <DropdownMenuItem onClick={() => handleWhatsAppShare(saree)}>
+                            <Share size={16} className="mr-2" />
+                            Share on WhatsApp
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleDelete(saree)}
-                            className="text-red-600"
-                          >
-                            <Trash2 size={16} className="mr-2" />
-                            Delete
-                          </DropdownMenuItem>
+                          {isAdmin && (
+                            <>
+                              <DropdownMenuItem onClick={() => navigate(`/edit-saree/${saree.id}`)}>
+                                <Edit size={16} className="mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => handleDelete(saree)}
+                                className="text-red-600"
+                              >
+                                <Trash2 size={16} className="mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>

@@ -76,6 +76,7 @@ const EditSaree = () => {
       toast({
         title: "Success!",
         description: `${formData.name} has been updated.`,
+        className: "bg-green-50 border-green-200 text-green-800",
       });
 
       navigate('/catalog');

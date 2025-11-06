@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Ama Sarees Authentication</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 10px 15px; margin: 5px; background: #007cba; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #005a87; }
+        .result { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 3px; white-space: pre-wrap; }
+        .error { background: #ffe6e6; border-left: 4px solid #ff0000; }
+        .success { background: #e6ffe6; border-left: 4px solid #00aa00; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Ama Sarees Authentication Test</h1>
+    
+    <div class="section">
+        <h2>1. Login Test</h2>
+        <p>Test the authentication endpoints:</p>
+        <button onclick="testLogin('admin@amarees.com', 'admin123')">Login as Admin</button>
+        <button onclick="testLogin('customer@example.com', 'customer123')">Login as Customer</button>
+        <div id="loginResult" class="result"></div>
+    </div>
+
+    <div class="section">
+        <h2>2. API Access Test</h2>
+        <p>Test authenticated API access:</p>
+        <button onclick="testSarees()">Get Sarees (Auth Required)</button>
+        <button onclick="testCustomers()">Get Customers (Auth Required)</button>
+        <button onclick="testUsers()">Get Users (Admin Only)</button>
+        <div id="apiResult" class="result"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. User Registration Test</h2>
+        <p>Test user registration:</p>
+        <button onclick="testRegister()">Register New Customer</button>
+        <div id="registerResult" class="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://127.0.0.1:8000';
+        let currentToken = null;
+
+        async function testLogin(email, password) {
+            const resultDiv = document.getElementById('loginResult');
+            resultDiv.textContent = 'Testing login...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/login/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentToken = data.token;
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = `✅ Login successful!\n\nUser: ${data.user.name}\nEmail: ${data.user.email}\nRole: ${data.user.role}\nToken: ${data.token.substring(0, 20)}...`;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = `❌ Login failed: ${data.error || 'Unknown error'}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Network error: ${error.message}`;
+            }
+        }
+
+        async function testSarees() {
+            await testApiEndpoint('/sarees/', 'apiResult');
+        }
+
+        async function testCustomers() {
+            await testApiEndpoint('/customers/', 'apiResult');
+        }
+
+        async function testUsers() {
+            await testApiEndpoint('/users/', 'apiResult');
+        }
+
+        async function testApiEndpoint(endpoint, resultId) {
+            const resultDiv = document.getElementById(resultId);
+            
+            if (!currentToken) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = '❌ Please login first to get a token';
+                return;
+            }
+
+            resultDiv.textContent = `Testing ${endpoint}...`;
+            
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    const count = data.results ? data.results.length : (Array.isArray(data) ? data.length : 'N/A');
+                    resultDiv.textContent = `✅ ${endpoint} successful!\n\nCount: ${count}\nData: ${JSON.stringify(data, null, 2)}`;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = `❌ ${endpoint} failed: ${data.detail || data.error || 'Unknown error'}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Network error: ${error.message}`;
+            }
+        }
+
+        async function testRegister() {
+            const resultDiv = document.getElementById('registerResult');
+            resultDiv.textContent = 'Testing registration...';
+            
+            const randomId = Math.floor(Math.random() * 1000);
+            const testUser = {
+                username: `testuser${randomId}`,
+                email: `test${randomId}@example.com`,
+                name: `Test User ${randomId}`,
+                password: 'testpass123'
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/register/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(testUser)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = `✅ Registration successful!\n\nUser: ${data.user.name}\nEmail: ${data.user.email}\nRole: ${data.user.role}\nToken: ${data.token.substring(0, 20)}...`;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = `❌ Registration failed: ${data.error || JSON.stringify(data)}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Network error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

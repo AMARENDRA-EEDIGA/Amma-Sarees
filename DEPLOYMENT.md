@@ -1,5 +1,17 @@
 # Deployment Guide
 
+## 🔑 Demo Accounts
+
+**Admin Access:**
+- Email: `admin@amarees.com`
+- Password: `admin123`
+- Access: Full system management
+
+**Customer Access:**
+- Email: `demo@customer.com`
+- Password: `demo123`
+- Access: Catalog browsing, order placement, profile management
+
 ## 🚀 Deploy to Render (Backend) + Vercel (Frontend)
 
 ### 1. Backend Deployment (Render)
@@ -36,6 +48,7 @@
 3. **Environment Variables** (in Vercel dashboard):
    ```
    VITE_API_BASE_URL=https://your-render-app.onrender.com
+   VITE_APP_NAME=Ama Sarees
    ```
 
 4. **Deploy**: Vercel will auto-deploy on every push to main branch
@@ -89,8 +102,11 @@ npm run build
 - [ ] API calls work between frontend and backend
 - [ ] CORS configured correctly
 - [ ] Database migrations applied
+- [ ] Authentication system working
+- [ ] Demo accounts functional
 - [ ] Sample data loaded (optional)
 - [ ] SSL certificates active
+- [ ] PWA manifest accessible
 - [ ] Custom domains configured (if applicable)
 
 ## 🔍 Troubleshooting

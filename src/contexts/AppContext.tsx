@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, startTransition } from 'react';
+import { useAuth } from './AuthContext';
 
 export interface Saree {
   id: string;
@@ -16,6 +17,7 @@ export interface Customer {
   name: string;
   phone: string;
   address: string;
+  email?: string;
   notes: string;
 }
 
@@ -61,22 +63,29 @@ interface AppContextType {
   addPayment: (orderId: string, payment: Omit<Payment, 'id'>) => Promise<void>;
   updateOrderStatus: (orderId: string, status: Order['status']) => Promise<void>;
   cancelOrder: (orderId: string) => Promise<void>;
+  deleteOrder: (id: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
-const api = {
+const createApi = (token: string | null) => ({
   async get(endpoint: string) {
-    const response = await fetch(`${API_BASE}${endpoint}`);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    
+    const response = await fetch(`${API_BASE}${endpoint}`, { headers });
     if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
     return response.json();
   },
   async post(endpoint: string, data: unknown) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(data)
     });
     if (!response.ok) {
@@ -87,19 +96,25 @@ const api = {
     return response.json();
   },
   async put(endpoint: string, data: unknown) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
     return response.json();
   },
   async delete(endpoint: string) {
-    const response = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE' });
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    
+    const response = await fetch(`${API_BASE}${endpoint}`, { method: 'DELETE', headers });
     if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
   }
-};
+});
 
 const transformApiData = {
   saree: (data: Record<string, unknown>): Saree => ({
@@ -117,12 +132,13 @@ const transformApiData = {
     name: data.name as string,
     phone: data.phone as string,
     address: data.address as string,
+    email: data.email as string | undefined,
     notes: data.notes as string
   }),
   order: (data: Record<string, unknown>): Order => ({
     id: data.id as string,
     customerId: data.customer as string,
-    items: (data.items as Record<string, unknown>[]).map((item: Record<string, unknown>) => ({
+    items: (data.items as Record<string, unknown>[] || []).map((item: Record<string, unknown>) => ({
       sareeId: item.saree as string,
       quantity: item.quantity as number,
       price: Number(item.price)
@@ -130,7 +146,7 @@ const transformApiData = {
     totalAmount: Number(data.total_amount),
     paidAmount: Number(data.paid_amount),
     dueAmount: Number(data.due_amount),
-    payments: (data.payments as Record<string, unknown>[]).map((p: Record<string, unknown>) => ({
+    payments: (data.payments as Record<string, unknown>[] || []).map((p: Record<string, unknown>) => ({
       id: p.id as string,
       amount: Number(p.amount),
       method: p.method as 'Cash' | 'UPI' | 'Other',
@@ -143,81 +159,115 @@ const transformApiData = {
   })
 };
 
-export const AppProvider = ({ children }: { children: ReactNode }) => {
+// Email validation function
+const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+function AppProvider({ children }: { children: ReactNode }) {
   const [sarees, setSarees] = useState<Saree[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const { token, isAuthenticated, user } = useAuth();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        console.log('Fetching data from Django API...');
-        const [sareesRes, customersRes, ordersRes] = await Promise.all([
-          api.get('/sarees/'),
-          api.get('/customers/'),
-          api.get('/orders/')
-        ]);
-        console.log('API Response - Sarees:', sareesRes);
-        console.log('API Response - Customers:', customersRes);
-        console.log('API Response - Orders:', ordersRes);
-        setSarees((sareesRes.results || sareesRes).map(transformApiData.saree));
-        setCustomers((customersRes.results || customersRes).map(transformApiData.customer));
-        setOrders((ordersRes.results || ordersRes).map(transformApiData.order));
-        console.log('Data loaded successfully');
+        const api = createApi(token);
+        
+        // Always try backend first for real business data
+        try {
+          const [sareesRes, customersRes, ordersRes] = await Promise.all([
+            api.get('/sarees/'),
+            api.get('/customers/'),
+            api.get('/orders/')
+          ]);
+          
+          const backendSarees = (sareesRes.results || sareesRes).map(transformApiData.saree);
+          const backendCustomers = (customersRes.results || customersRes).map(transformApiData.customer);
+          const backendOrders = (ordersRes.results || ordersRes).map(transformApiData.order);
+          
+          setSarees(backendSarees);
+          setCustomers(backendCustomers);
+          setOrders(backendOrders);
+          
+          console.log('Loaded orders:', backendOrders.length, 'for user:', user?.name, 'role:', user?.role);
+          
+        } catch (apiError) {
+          console.log('Backend unavailable, using local fallback:', apiError);
+          // Fallback to local data only if backend fails
+          const sharedData = getSharedData();
+          setSarees(sharedData.sarees);
+          setCustomers(sharedData.customers);
+          setOrders(sharedData.orders);
+        }
+        
+        setLoading(false);
+        
       } catch (error) {
-        console.error('Failed to fetch data from Django API:', error);
-        console.log('Make sure Django server is running on http://localhost:8000');
-      } finally {
+        console.error('Failed to load data:', error);
         setLoading(false);
       }
     };
-    fetchData();
-  }, []);
+    
+    if (isAuthenticated) {
+      fetchData();
+    } else {
+      setLoading(false);
+    }
+  }, [token, isAuthenticated, user?.id]);
+
+  // Shared data storage for all users
+  const getSharedData = () => {
+    const sharedSarees = JSON.parse(localStorage.getItem('sharedSarees') || '[]');
+    const sharedCustomers = JSON.parse(localStorage.getItem('sharedCustomers') || '[]');
+    const sharedOrders = JSON.parse(localStorage.getItem('sharedOrders') || '[]');
+    
+    // Initialize with mock data if empty
+    if (sharedSarees.length === 0) {
+      const mockSarees = [
+        { id: '1', name: 'Silk Saree Red', category: 'Silk', price: 2500, stock: 10, notes: 'Beautiful red silk saree' },
+        { id: '2', name: 'Cotton Saree Blue', category: 'Cotton', price: 800, stock: 15, notes: 'Comfortable cotton saree' },
+        { id: '3', name: 'Designer Saree Gold', category: 'Designer', price: 4500, stock: 5, notes: 'Elegant gold designer saree' }
+      ];
+      localStorage.setItem('sharedSarees', JSON.stringify(mockSarees));
+      return { sarees: mockSarees, customers: sharedCustomers, orders: sharedOrders };
+    }
+    
+    return { sarees: sharedSarees, customers: sharedCustomers, orders: sharedOrders };
+  };
+  
+  const saveSharedData = (type: 'sarees' | 'customers' | 'orders', data: any[]) => {
+    localStorage.setItem(`shared${type.charAt(0).toUpperCase() + type.slice(1)}`, JSON.stringify(data));
+  };
 
   const addSaree = async (sareeData: Omit<Saree, 'id'>) => {
-    console.log('🔵 Adding saree:', sareeData);
+    const api = createApi(token);
     const tempId = `temp-${Date.now()}`;
     const tempSaree = { ...sareeData, id: tempId, description: sareeData.notes };
     
-    setSarees(prev => {
-      console.log('🟡 Current sarees before adding:', prev.length);
-      console.log('🟡 Adding temp saree:', tempSaree);
-      const newState = [...prev, tempSaree];
-      console.log('🟡 New sarees count:', newState.length);
-      return newState;
-    });
+    setSarees(prev => [...prev, tempSaree]);
     
     try {
-      console.log('🔵 Calling API to create saree...');
       // Filter out empty image URLs to avoid validation errors
       const cleanSareeData = { ...sareeData };
       if (!cleanSareeData.image || cleanSareeData.image.trim() === '') {
         delete cleanSareeData.image;
       }
-      console.log('🔵 Cleaned saree data:', cleanSareeData);
       const newSaree = await api.post('/sarees/', cleanSareeData);
-      console.log('🟢 API response for new saree:', newSaree);
-      console.log('🟢 Transformed saree:', transformApiData.saree(newSaree));
       
-      setSarees(prev => {
-        console.log('🟡 Replacing temp saree with real saree');
-        console.log('🟡 Looking for tempId:', tempId);
-        const updated = prev.map(s => {
-          console.log('🟡 Checking saree:', s.id, s.id === tempId ? '(MATCH)' : '');
-          return s.id === tempId ? transformApiData.saree(newSaree) : s;
-        });
-        console.log('🟢 Final updated sarees:', updated.length, updated);
-        return updated;
-      });
+      setSarees(prev => prev.map(s => s.id === tempId ? transformApiData.saree(newSaree) : s));
     } catch (error) {
-      console.error('🔴 Error adding saree:', error);
+      console.error('Error adding saree:', error);
       setSarees(prev => prev.filter(s => s.id !== tempId));
       throw error;
     }
   };
 
   const updateSaree = async (id: string, sareeData: Partial<Saree>) => {
+    const api = createApi(token);
     const originalSaree = sarees.find(s => s.id === id);
     setSarees(prev => prev.map(saree => 
       saree.id === id ? { ...saree, ...sareeData } : saree
@@ -239,6 +289,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteSaree = async (id: string) => {
+    const api = createApi(token);
     const originalSaree = sarees.find(s => s.id === id);
     setSarees(prev => prev.filter(saree => saree.id !== id));
     
@@ -258,15 +309,39 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setCustomers(prev => [...prev, tempCustomer]);
     
     try {
-      const newCustomer = await api.post('/customers/', customerData);
-      setCustomers(prev => prev.map(c => c.id === tempId ? transformApiData.customer(newCustomer) : c));
+      const api = createApi(token);
+      
+      // Clean customer data - remove invalid email
+      const cleanCustomerData: any = {
+        name: customerData.name,
+        phone: customerData.phone,
+        address: customerData.address,
+        notes: customerData.notes
+      };
+      
+      // Only add email if it's valid
+      if (customerData.email && customerData.email.trim() && isValidEmail(customerData.email.trim())) {
+        cleanCustomerData.email = customerData.email.trim();
+      }
+      
+      console.log('Sending customer data:', cleanCustomerData);
+      
+      const newCustomer = await api.post('/customers/', cleanCustomerData);
+      const backendCustomer = transformApiData.customer(newCustomer);
+      setCustomers(prev => prev.map(c => c.id === tempId ? backendCustomer : c));
+      
+      // Refresh customers from backend
+      const customersRes = await api.get('/customers/');
+      setCustomers((customersRes.results || customersRes).map(transformApiData.customer));
     } catch (error) {
+      console.error('Backend customer creation failed:', error);
       setCustomers(prev => prev.filter(c => c.id !== tempId));
       throw error;
     }
   };
 
   const updateCustomer = async (id: string, customerData: Partial<Customer>) => {
+    const api = createApi(token);
     const originalCustomer = customers.find(c => c.id === id);
     setCustomers(prev => prev.map(customer => 
       customer.id === id ? { ...customer, ...customerData } : customer
@@ -288,6 +363,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const deleteCustomer = async (id: string) => {
+    const api = createApi(token);
     const originalCustomer = customers.find(c => c.id === id);
     setCustomers(prev => prev.filter(customer => customer.id !== id));
     
@@ -304,16 +380,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const addOrder = async (orderData: Omit<Order, 'id'>) => {
     const tempId = `temp-${Date.now()}`;
     const tempOrder = { ...orderData, id: tempId };
+    
+    // Optimistic UI update
     setOrders(prev => [...prev, tempOrder]);
     
-    // Optimistically update stock
+    // Update stock optimistically
+    const stockUpdates: Record<string, number> = {};
     orderData.items.forEach(item => {
-      setSarees(prev => prev.map(s => 
-        s.id === item.sareeId ? { ...s, stock: s.stock - item.quantity } : s
-      ));
+      stockUpdates[item.sareeId] = (stockUpdates[item.sareeId] || 0) - item.quantity;
     });
     
+    setSarees(prev => prev.map(s => 
+      stockUpdates[s.id] ? { ...s, stock: s.stock + stockUpdates[s.id] } : s
+    ));
+    
     try {
+      const api = createApi(token);
       const apiOrderData = {
         customer: orderData.customerId,
         total_amount: orderData.totalAmount,
@@ -327,51 +409,72 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           price: item.price
         }))
       };
-      const newOrder = await api.post('/orders/', apiOrderData);
-      setOrders(prev => prev.map(o => o.id === tempId ? transformApiData.order(newOrder) : o));
       
-      // Refresh sarees to get accurate stock
-      const sareesRes = await api.get('/sarees/');
-      setSarees(sareesRes.results.map(transformApiData.saree));
+      const newOrder = await api.post('/orders/', apiOrderData);
+      const backendOrder = transformApiData.order(newOrder);
+      
+      // Update with backend response
+      setOrders(prev => prev.map(o => o.id === tempId ? backendOrder : o));
+      
+      // Send notification with backend order ID
+      const customer = customers.find(c => c.id === orderData.customerId);
+      const customerName = customer?.name || user?.name || 'Unknown Customer';
+      const isCustomerOrder = user && user.role === 'customer';
+      
+      const adminNotifications = JSON.parse(localStorage.getItem('sharedNotifications') || '[]');
+      const notification = {
+        id: `notif-${Date.now()}`,
+        type: 'order',
+        title: isCustomerOrder ? 'New Customer Order' : 'New Order Created',
+        message: `${customerName} ${isCustomerOrder ? 'placed' : 'has'} an order worth ₹${orderData.totalAmount.toLocaleString()}`,
+        timestamp: new Date().toISOString(),
+        read: false,
+        orderId: backendOrder.id,
+        customerId: orderData.customerId
+      };
+      adminNotifications.unshift(notification);
+      localStorage.setItem('sharedNotifications', JSON.stringify(adminNotifications.slice(0, 50)));
+      
+      // Refresh ALL data from backend to ensure consistency
+      const [sareesRes, ordersRes, customersRes] = await Promise.all([
+        api.get('/sarees/'),
+        api.get('/orders/'),
+        api.get('/customers/')
+      ]);
+      setSarees((sareesRes.results || sareesRes).map(transformApiData.saree));
+      setOrders((ordersRes.results || ordersRes).map(transformApiData.order));
+      setCustomers((customersRes.results || customersRes).map(transformApiData.customer));
+      
     } catch (error) {
+      console.error('Backend order creation failed:', error);
+      // Revert optimistic updates
       setOrders(prev => prev.filter(o => o.id !== tempId));
-      // Revert stock changes
-      orderData.items.forEach(item => {
-        setSarees(prev => prev.map(s => 
-          s.id === item.sareeId ? { ...s, stock: s.stock + item.quantity } : s
-        ));
-      });
+      setSarees(prev => prev.map(s => 
+        stockUpdates[s.id] ? { ...s, stock: s.stock - stockUpdates[s.id] } : s
+      ));
       throw error;
     }
   };
 
   const addPayment = async (orderId: string, paymentData: Omit<Payment, 'id'>) => {
+    const api = createApi(token);
     const tempPayment = { ...paymentData, id: `temp-${Date.now()}` };
     
-    // Optimistically update order
-    setOrders(prev => prev.map(order => {
-      if (order.id === orderId) {
+    // Wrap in transition to prevent UI freezing
+    startTransition(() => {
+      setOrders(prev => prev.map(order => {
+        if (order.id !== orderId) return order;
+        
         const updatedPayments = [...order.payments, tempPayment];
         const totalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
         const dueAmount = order.totalAmount - totalPaid;
         
-        let status: Order['status'] = 'Pending';
-        if (totalPaid >= order.totalAmount) {
-          status = 'Paid';
-        } else if (totalPaid > 0) {
-          status = 'Partial';
-        }
+        const status: Order['status'] = totalPaid >= order.totalAmount ? 'Paid' : 
+                                       totalPaid > 0 ? 'Partial' : 'Pending';
 
-        return {
-          ...order,
-          payments: updatedPayments,
-          paidAmount: totalPaid,
-          dueAmount: dueAmount,
-          status
-        };
-      }
-      return order;
-    }));
+        return { ...order, payments: updatedPayments, paidAmount: totalPaid, dueAmount, status };
+      }));
+    });
     
     try {
       await api.post(`/orders/${orderId}/add_payment/`, {
@@ -386,35 +489,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const updatedOrders = (ordersRes.results || ordersRes).map(transformApiData.order);
       setOrders(updatedOrders);
     } catch (error) {
-      // Revert optimistic update
+      // Single revert update to prevent UI freezing
       setOrders(prev => prev.map(order => {
-        if (order.id === orderId) {
-          const revertedPayments = order.payments.filter(p => p.id !== tempPayment.id);
-          const totalPaid = revertedPayments.reduce((sum, p) => sum + p.amount, 0);
-          const dueAmount = order.totalAmount - totalPaid;
-          
-          let status: Order['status'] = 'Pending';
-          if (totalPaid >= order.totalAmount) {
-            status = 'Paid';
-          } else if (totalPaid > 0) {
-            status = 'Partial';
-          }
+        if (order.id !== orderId) return order;
+        
+        const revertedPayments = order.payments.filter(p => p.id !== tempPayment.id);
+        const totalPaid = revertedPayments.reduce((sum, p) => sum + p.amount, 0);
+        const dueAmount = order.totalAmount - totalPaid;
+        
+        const status: Order['status'] = totalPaid >= order.totalAmount ? 'Paid' : 
+                                       totalPaid > 0 ? 'Partial' : 'Pending';
 
-          return {
-            ...order,
-            payments: revertedPayments,
-            paidAmount: totalPaid,
-            dueAmount: dueAmount,
-            status
-          };
-        }
-        return order;
+        return { ...order, payments: revertedPayments, paidAmount: totalPaid, dueAmount, status };
       }));
       throw error;
     }
   };
 
   const updateOrderStatus = async (orderId: string, status: Order['status']) => {
+    const api = createApi(token);
     const originalOrder = orders.find(o => o.id === orderId);
     setOrders(prev => prev.map(order => 
       order.id === orderId ? { ...order, status } : order
@@ -433,6 +526,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const cancelOrder = async (orderId: string) => {
+    const api = createApi(token);
     const originalOrder = orders.find(o => o.id === orderId);
     const originalSarees = [...sarees];
     
@@ -444,28 +538,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       throw new Error('Cannot cancel order with payments. Please refund payments first.');
     }
     
-    // Optimistically update order status
-    setOrders(prev => prev.map(order => 
-      order.id === orderId ? { ...order, status: 'Cancelled' as const } : order
-    ));
-    
-    // Optimistically restore stock
+    // Batch state updates to prevent UI freezing
+    const stockUpdates: Record<string, number> = {};
     originalOrder.items.forEach(item => {
+      stockUpdates[item.sareeId] = (stockUpdates[item.sareeId] || 0) + item.quantity;
+    });
+    
+    // Batch updates in transition to prevent UI blocking
+    startTransition(() => {
+      setOrders(prev => prev.map(order => 
+        order.id === orderId ? { ...order, status: 'Cancelled' as const } : order
+      ));
+      
       setSarees(prev => prev.map(s => 
-        s.id === item.sareeId ? { ...s, stock: s.stock + item.quantity } : s
+        stockUpdates[s.id] ? { ...s, stock: s.stock + stockUpdates[s.id] } : s
       ));
     });
     
     try {
       await api.post(`/orders/${orderId}/cancel_order/`, {});
       
-      // Refresh data to ensure consistency
-      const [sareesRes, ordersRes] = await Promise.all([
-        api.get('/sarees/'),
-        api.get('/orders/')
-      ]);
-      setSarees((sareesRes.results || sareesRes).map(transformApiData.saree));
-      setOrders((ordersRes.results || ordersRes).map(transformApiData.order));
+      // Only refresh if needed - avoid unnecessary API calls
+      // The optimistic updates should be sufficient
     } catch (error) {
       // Revert optimistic updates
       if (originalOrder) {
@@ -474,6 +568,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         ));
       }
       setSarees(originalSarees);
+      throw error;
+    }
+  };
+
+  const deleteOrder = async (id: string) => {
+    const api = createApi(token);
+    const originalOrder = orders.find(o => o.id === id);
+    setOrders(prev => prev.filter(order => order.id !== id));
+    
+    try {
+      await api.delete(`/orders/${id}/`);
+    } catch (error) {
+      if (originalOrder) {
+        setOrders(prev => [...prev, originalOrder]);
+      }
       throw error;
     }
   };
@@ -492,16 +601,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     addOrder,
     addPayment,
     updateOrderStatus,
-    cancelOrder
+    cancelOrder,
+    deleteOrder
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
-};
+}
 
-export const useApp = () => {
+function useApp() {
   const context = useContext(AppContext);
   if (context === undefined) {
     throw new Error('useApp must be used within an AppProvider');
   }
   return context;
-};
+}
+
+export { AppProvider, useApp };
