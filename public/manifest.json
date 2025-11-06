@@ -6,23 +6,7 @@
   "display": "standalone",
   "background_color": "#fef9ec",
   "theme_color": "#8b2635",
-  "icons": [
-    {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "placeholder.svg",
-      "type": "image/svg+xml",
-      "sizes": "192x192"
-    },
-    {
-      "src": "placeholder.svg",
-      "type": "image/svg+xml",
-      "sizes": "512x512"
-    }
-  ],
+  "icons": [],
   "categories": ["business", "shopping", "productivity"],
   "orientation": "portrait"
 }
