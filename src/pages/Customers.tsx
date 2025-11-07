@@ -118,10 +118,10 @@ const Customers = () => {
     }
 
     try {
-      const customerData: any = {
+      const customerData: Omit<Customer, 'id'> = {
         name: formData.name,
         phone: formData.phone,
-        address: formData.address,
+        address: formData.address || '',
         notes: formData.notes
       };
 
@@ -225,7 +225,7 @@ const Customers = () => {
               
               {(() => {
                 const customerLogins = JSON.parse(localStorage.getItem('customerLogins') || '[]');
-                const loginCredentials = customerLogins.find((login: any) => 
+                const loginCredentials = customerLogins.find((login: { email: string; name: string; password: string; customerId: string }) => 
                   login.email === selectedCustomer.email || login.name === selectedCustomer.name
                 );
                 
@@ -484,7 +484,7 @@ const Customers = () => {
                     type="checkbox"
                     id="createLogin"
                     checked={formData.createLogin}
-                    onChange={(e) => handleInputChange('createLogin', e.target.checked.toString())}
+                    onChange={(e) => setFormData(prev => ({ ...prev, createLogin: e.target.checked }))}
                     className="rounded"
                   />
                   <Label htmlFor="createLogin" className="text-sm font-medium">

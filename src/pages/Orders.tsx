@@ -955,13 +955,15 @@ const Orders = () => {
                             <Download size={16} className="mr-2" />
                             Download Invoice
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => setShowDeleteConfirm(order.id)}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 size={16} className="mr-2" />
-                            Delete Order
-                          </DropdownMenuItem>
+                          {isAdmin && (
+                            <DropdownMenuItem 
+                              onClick={() => setShowDeleteConfirm(order.id)}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 size={16} className="mr-2" />
+                              Delete Order
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
